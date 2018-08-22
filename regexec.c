@@ -9772,7 +9772,7 @@ S_reginclass(pTHX_ regexp * const prog, const regnode * const n, const U8* const
 		    utf8_p = utf8_buffer;
 		}
 
-		if (swash_fetch(sw, utf8_p, TRUE)) {
+                if (_invlist_contains_cp(sw, c)) {
 		    match = TRUE;
                 }
 	    }
