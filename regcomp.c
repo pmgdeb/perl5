@@ -4081,8 +4081,8 @@ S_join_exact(pTHX_ RExC_state_t *pRExC_state, regnode *scan,
                     && STRING(n)[0] == 's')
                 {
                     /* When combined, we have the sequence 'ss', which means we
-                     * have to remain /di */
-                    OP(scan) = EXACTF;
+                     * have to remain /di, unless using Unicode rules */
+                    OP(scan) = (RExC_uni_semantics) ? EXACTFU : EXACTF;
                 }
             }
             else if (OP(scan) == EXACTFU_S_EDGE && OP(n) == EXACTFU) {
