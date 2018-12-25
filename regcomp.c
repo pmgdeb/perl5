@@ -14667,7 +14667,7 @@ S_regatom(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth)
                         if (! maybe_exactfu) {
                             RExC_seen_d_op = TRUE;
                         }
-                        else if (   isALPHA_FOLD_EQ(*s0, 's')
+                        else if (   isALPHA_FOLD_EQ(* STRING(REGNODE_p(ret)), 's')
                                  || isALPHA_FOLD_EQ(ender, 's'))
                         {
                             /* But, if the node begins or ends in an 's' we
