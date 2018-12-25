@@ -10907,6 +10907,7 @@ S_parse_lparen_question_flags(pTHX_ RExC_state_t *pRExC_state)
                 }
                 RExC_flags &= ~negflags;
                 set_regex_charset(&RExC_flags, cs);
+                RExC_uni_semantics = AT_LEAST_UNI_SEMANTICS;
 
                 return;
             default:
