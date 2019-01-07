@@ -478,7 +478,7 @@ sub _loose_name ($) {
         # to separate them; also lists are already sorted, so don't need to do
         # that.
         if ($list && ! $list_is_from_mktables) {
-            my $taint = substr($list,0,0); # maintain taint
+            my $taint = substr($list,0,0); # maintain taint XXX
 
             # Separate the extras from the code point list, and make sure
             # user-defined properties and tr/// are well-behaved for

@@ -1,4 +1,6 @@
 #!perl -w
+use Data::Dumper;
+$Data::Dumper::Sortkeys = 1;
 use 5.015;
 use strict;
 use warnings;
@@ -2358,6 +2360,9 @@ foreach my $key (keys %utf8::nv_floating_to_rational) {
 # names first, finally alphabetically.  Also, sort together the tables we want
 # to be kept together, and prefer those with 'posix' in their names, which is
 # what the C code is expecting their names to be.
+my %all_values;
+my @prop_value_defines;
+my @prop_values_synonyms;
 foreach my $property (sort
         {   exists $keep_together{lc $b} <=> exists $keep_together{lc $a}
          or $b =~ /posix/i <=> $a =~ /posix/i
@@ -2392,7 +2397,17 @@ foreach my $property (sort
     # thing if there is no '='
     my ($lhs, $rhs) = $property =~ / ( [^=]* ) ( =? .*) /x;
 
-    # $lhs then becomes the property name.  See if there are any synonyms
+    # $lhs then becomes the property name.  
+    my $prop_value = $rhs =~ s/ ^ = //rx;
+
+    if ($prop_value ne "") {
+        push @{$all_values{$lhs}}, $prop_value;
+        push @prop_value_defines, "${table_name_prefix}$lhs";
+    }
+    print STDERR __LINE__, ": '$prop_value' from $property\n" if $prop_value
+    ne "";
+    
+    # See if there are any synonyms
     # for this property.
     if (exists $prop_name_aliases{$lhs}) {
 
@@ -2412,6 +2427,10 @@ foreach my $property (sort
 
             my $new_entry = $alias . $rhs;
             push @this_entries, $new_entry;
+            print STDERR __LINE__, ": '$prop_value' from $new_entry\n" if $prop_value ne "";
+
+            push @{$all_values{$alias}}, $prop_value if $prop_value ne "";
+            push @prop_values_synonyms, "#define ${table_name_prefix}${alias}_index  ${table_name_prefix}${lhs}_index\n";
         }
     }
 
@@ -2419,6 +2438,7 @@ foreach my $property (sort
     # processing.  But we haven't dealt with it yet.  If we already have a
     # property with the identical characteristics, this becomes just a
     # synonym for it.
+
     if (exists $enums{$tag}) {
         push @this_entries, $property;
     }
@@ -2457,6 +2477,7 @@ foreach my $property (sort
 
     # Go through the entries that evaluate to this.
     @this_entries = uniques @this_entries;
+    #print STDERR __LINE__, Dumper \@this_entries if $prop_value ne "";
     foreach my $define (@this_entries) {
 
         # There is a rule for the parser for each.
@@ -2472,6 +2493,7 @@ foreach my $property (sort
         }
     }
 }
+#print STDERR Dumper \%all_values;
 
 @bin_props = sort {  exists $keep_together{lc $b} <=> exists $keep_together{lc $a}
                    or $a cmp $b
@@ -2929,6 +2951,9 @@ print $out_fh "\n";
 
 output_table_trailer();
 
+@prop_values_synonyms = sort(uniques(@prop_values_synonyms));
+print $out_fh join "", @prop_values_synonyms;
+
 print $out_fh join "\n", "\n",
                          #'#    ifdef DOINIT',
                          #"\n",
@@ -2937,6 +2962,49 @@ print $out_fh join "\n", "\n",
                          #"\n",
                          #"#    endif  /* DOINIT */",
                          "\n";
+
+switch_pound_if ('Valid property_values', 'PERL_IN_REGCOMP_C');
+
+my %joined_values;
+my @values_tables = "NULL /* Placeholder so zero index is an error */";
+my @values_indices;
+
+PROPERTY:
+for my $property (sort {    substr($a, 0, 1) cmp substr($b, 0, 1)
+                         or length $a <=> length $b
+                         or $a cmp $b }
+                 keys %all_values)
+{
+    my $joined = "\t\"";
+    $joined .= join "\",\n\t\"", sort {    substr($a, 0, 1) cmp substr($b, 0, 1)
+                                        or length $a <=> length $b
+                                        or $a cmp $b } @{$all_values{$property}};
+    $joined .= "\",\n\tNULL\n";
+
+    my $table_name = $table_name_prefix . $property . "_values";
+    my $index_name = "${table_name}_index";
+    $keywords{"$property="} = $index_name;
+
+    if (exists $joined_values{$joined}) {
+        push @values_indices, "#define $index_name  $joined_values{$joined}\n";
+        next PROPERTY;
+    }
+
+    push @values_indices, "#define $index_name  " . scalar @values_tables . "\n";
+    $joined_values{$joined} = $index_name;
+    push @values_tables, $table_name;
+
+    output_table_header($out_fh, "char *", $table_name);
+    print $out_fh $joined;
+    output_table_trailer();
+}
+
+print $out_fh "\n\n", join "", @values_indices;
+
+output_table_header($out_fh, "char * const *", "${table_name_prefix}prop_value_ptrs");
+print $out_fh join ",\n", @values_tables;
+print $out_fh "\n";
+output_table_trailer();
 
 switch_pound_if('Boundary_pair_tables', 'PERL_IN_REGEXEC_C');
 
@@ -3002,6 +3070,8 @@ print $keywords_fh <<"EOF";
 #define PL_E_FORMAT_PRECISION $utf8::e_precision
 
 EOF
+
+print STDERR Dumper \%keywords;
 
 my ($second_level, $seed1, $length_all_keys, $smart_blob, $rows) = MinimalPerfectHash::make_mph_from_hash(\%keywords);
 print $keywords_fh MinimalPerfectHash::make_algo($second_level, $seed1, $length_all_keys, $smart_blob, $rows, undef, undef, undef, 'match_uniprop' );
