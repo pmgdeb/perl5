@@ -4196,16 +4196,16 @@ PP(pp_uc)
                     Size_t extra;
 
 		    *d = toUPPER_LATIN1_MOD(*s);
-		    if (LIKELY(   *d != LATIN_SMALL_LETTER_Y_WITH_DIAERESIS
+		    if (   LIKELY(*d != LATIN_SMALL_LETTER_Y_WITH_DIAERESIS)
 
 #ifdef USE_LOCALE_CTYPE
 
-                               && (LIKELY(   ! PL_in_utf8_turkic_locale
-                                          || ! IN_LC_RUNTIME(LC_CTYPE))
-                                          || *s != 'i')
+                        && (LIKELY(   ! PL_in_utf8_turkic_locale
+                                   || ! IN_LC_RUNTIME(LC_CTYPE))
+                                   || *s != 'i')
 #endif
 
-                    )) {
+                    ) {
                         continue;
                     }
 
