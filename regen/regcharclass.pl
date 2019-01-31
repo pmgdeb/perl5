@@ -1484,6 +1484,30 @@ EOF
     }
 }
 
+sub _Perl_CCC_NONZERO_NON230 {
+    use Unicode::UCD qw(prop_value_aliases charprop);
+
+    my @nonzeros = prop_invlist("ccc=0");
+    shift @nonzeros;    # Invert so is "ccc != 0"
+
+    my @return;
+
+    # Expand into list of code points, while excluding those with ccc == 230
+    for (my $i = 0; $i < @nonzeros; $i += 2) {
+        my $upper = ($i + 1) < @nonzeros
+                    ? $nonzeros[$i+1] - 1      # In range
+                    : $Unicode::UCD::MAX_CP;  # To infinity.
+        for my $j ($nonzeros[$i] .. $upper) {
+            my @ccc_names = prop_value_aliases("ccc", charprop($j, "ccc"));
+
+            # Final element in @ccc_names will be all numeric
+            push @return, sprintf("0x%x", $j) if $ccc_names[-1] != 230;
+        }
+    }
+
+    return @return;
+}
+
 # The form of the input is a series of definitions to make macros for.
 # The first line gives the base name of the macro, followed by a colon, and
 # then text to be used in comments associated with the macro that are its
@@ -1672,3 +1696,19 @@ PATWS: pattern white space
 HANGUL_ED: Hangul syllables whose first character is \xED
 => UTF8 :only_ascii_platform safe
 0xD000 - 0xD7FF
+
+CCC_NONZERO_NON230 : characters whose ccc is neither 0 nor 230
+=> UTF8 :safe
+&CharClass::Matcher::_Perl_CCC_NONZERO_NON230()
+
+COMBINING_MARK : characters which are combining marks
+=> UTF8 :safe
+\p{M}
+
+PUNCT : punct
+=> high :safe
+\p{XPosixPunct}
+
+DIGIT : digit
+=> high :safe
+\p{XPosixDigit}

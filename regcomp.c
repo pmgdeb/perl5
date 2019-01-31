@@ -1651,11 +1651,27 @@ S_get_ANYOF_cp_list_for_ssc(pTHX_ const RExC_state_t *pRExC_state,
     if (ANYOF_FLAGS(node) & ANYOF_INVERT) {
         _invlist_invert(invlist);
     }
-    else if (new_node_has_latin1 && ANYOF_FLAGS(node) & ANYOFL_FOLD) {
+    else if (ANYOF_FLAGS(node) & ANYOFL_FOLD) {
+        if (new_node_has_latin1) {
+            /* XXX indent */
 
         /* Under /li, any 0-255 could fold to any other 0-255, depending on the
          * locale.  We can skip this if there are no 0-255 at all. */
         _invlist_union(invlist, PL_Latin1, &invlist);
+
+            invlist = add_cp_to_invlist(invlist, LATIN_SMALL_LETTER_DOTLESS_I);
+            invlist = add_cp_to_invlist(invlist, LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE);
+        }
+        else {
+            if (_invlist_contains_cp(invlist, LATIN_SMALL_LETTER_DOTLESS_I)) {
+                invlist = add_cp_to_invlist(invlist, 'I');
+            }
+            if (_invlist_contains_cp(invlist,
+                                        LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE))
+            {
+                invlist = add_cp_to_invlist(invlist, 'i');
+            }
+        }
     }
 
     /* Similarly add the UTF-8 locale possible matches.  These have to be
@@ -2042,7 +2058,7 @@ S_is_ssc_worth_it(const RExC_state_t * pRExC_state, const regnode_ssc * ssc)
     U32 count = 0;      /* Running total of number of code points matched by
                            'ssc' */
     UV start, end;      /* Start and end points of current range in inversion
-                           list */
+                           XXX list */
     const U32 max_code_points = (LOC)
                                 ?  256
                                 : ((  ! UNI_SEMANTICS
@@ -7904,6 +7920,8 @@ Perl_re_op_compile(pTHX_ SV ** const patternp, int pat_count,
             RExC_rxi->regstclass = construct_ahocorasick_from_trie(pRExC_state, (regnode *)first, 0);
 	}
 #endif
+	else if (OP(first) == ANYOFL && (ANYOF_FLAGS(first) & ANYOFL_FOLD))
+            NOOP;
 	else if (REGNODE_SIMPLE(OP(first)))
 	    RExC_rxi->regstclass = first;
 	else if (PL_regkind[OP(first)] == BOUND ||
@@ -10604,7 +10622,8 @@ Perl__invlistEQ(pTHX_ SV* const a, SV* const b, const bool complement_b)
 
 /*
  * As best we can, determine the characters that can match the start of
- * the given EXACTF-ish node.
+ * the given EXACTF-ish node.  This is for use in creating ssc nodes, so there
+ * can be false positive matches
  *
  * Returns the invlist as a new SV*; it is the caller's responsibility to
  * call SvREFCNT_dec() when done with it.
@@ -10639,6 +10658,8 @@ S__make_exactf_invlist(pTHX_ RExC_state_t *pRExC_state, regnode *node)
              * other depending on the locale */
             if (OP(node) == EXACTFL) {
                 _invlist_union(invlist, PL_Latin1, &invlist);
+                invlist = add_cp_to_invlist(invlist, LATIN_SMALL_LETTER_DOTLESS_I);
+                invlist = add_cp_to_invlist(invlist, LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE);
             }
             else {
                 /* But otherwise, it matches at least itself.  We can
@@ -10741,6 +10762,25 @@ S__make_exactf_invlist(pTHX_ RExC_state_t *pRExC_state, regnode *node)
                 }
 
                 invlist = add_cp_to_invlist(invlist, c);
+            }
+
+            if (OP(node) == EXACTFL) {
+                /* If either [iI] are present in an EXACTFL node the above code
+                 * should have added its normal case pair, so under a Turkish
+                 * locale they could match instead the case pairs from it.
+                 *
+                 * Otherwise, add the Turkish mapping just in case that is the
+                 * runtime locale */
+                if (isALPHA_FOLD_EQ(fc, 'I')) {
+                    invlist = add_cp_to_invlist(invlist, LATIN_SMALL_LETTER_DOTLESS_I);
+                    invlist = add_cp_to_invlist(invlist, LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE);
+                }
+                else if (fc == LATIN_SMALL_LETTER_DOTLESS_I) {
+                    invlist = add_cp_to_invlist(invlist, 'I');
+                }
+                else if (fc == LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE) {
+                    invlist = add_cp_to_invlist(invlist, 'i');
+                }
             }
         }
     }
@@ -18150,7 +18190,10 @@ S_regclass(pTHX_ RExC_state_t *pRExC_state, I32 *flagp, U32 depth,
                 only_utf8_locale_list = NULL;
             }
         }
-        if (only_utf8_locale_list) {
+        if (    only_utf8_locale_list
+            || (cp_list && (   _invlist_contains_cp(cp_list, LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE)
+                            || _invlist_contains_cp(cp_list, LATIN_SMALL_LETTER_DOTLESS_I))))
+        {
             has_runtime_dependency |= HAS_L_RUNTIME_DEPENDENCY;
             anyof_flags
                  |= ANYOFL_FOLD

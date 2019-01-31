@@ -3,6 +3,9 @@
 # will also have set the locale to use if /l is the modifier.
 #   L is a pseudo-modifier that indicates to use the modifier /l instead, and
 #     the locale set by the caller is known to be UTF-8,
+#   T is a pseudo-modifier that indicates to use the pseudo modifier /L
+#     instead, and the locale set by the caller is known to be Turkic UTF-8,
+# XXX make sure I and i don't match under /T
 
 binmode STDOUT, ":utf8";
 
@@ -33,6 +36,11 @@ use Encode;
 use POSIX;
 
 my $charset = $::TEST_CHUNK;
+my $use_turkic_rules = 0;
+if ($charset eq 'T') {
+    $charset = 'L';
+    $use_turkic_rules = 1;
+}
 
 # Special-cased characters in the .c's that we want to make sure get tested.
 my %be_sure_to_test = (
@@ -274,7 +282,13 @@ if ($::IS_ASCII
     && pack("C*", split /\./, Unicode::UCD::UnicodeVersion()) ge v3.1.0
     && open my $fh, "<", $file)
 {
-    while (<$fh>) {
+    # We process the file in reverse order because if we are paying attention
+    # to T entries, they override [CF] ones for the same code point that
+    # always come first in the file, and its easier to just not do the [CF]
+    # entry when something is already defined than to undo setting up the
+    # inverse folds.
+    my @rules = <$fh>;
+    while (defined ($_ = pop @rules)) {
         chomp;
 
         # Lines look like (though without the initial '#')
@@ -285,20 +299,27 @@ if ($::IS_ASCII
         next unless length $line;
         my ($hex_from, $fold_type, @hex_folded) = split /[\s;]+/, $line;
 
-        next if $fold_type =~ / ^ [IT] $/x; # Perl doesn't do Turkish folding
+        next if $fold_type eq 'I';  # Perl doesn't do old Turkish folding
+        next if $fold_type eq 'T' && ! $use_turkic_rules;
+
         next if $fold_type eq 'S';  # If Unicode's tables are correct, the F
                                     # should be a superset of S
 
         my $from = hex $hex_from;
         my @to = map { hex $_ } @hex_folded;
+        next if defined $folds{$from};      # Don't override an existing entry
         @{$folds{$from}} = @to;
         my $folded_str = pack ("U0U*", @to);
+
+
         push @{$inverse_folds{$folded_str}}, chr $from;
     }
 }
 else {  # Here, can't use the .txt file: read the Unicode rules file and
         # construct inverse mappings from it
 
+    skip_all "Don't know how to generate turkic rules on this platform"
+                                                            if $use_turkic_rules;
     my ($invlist_ref, $invmap_ref, undef, $default)
                                     = Unicode::UCD::prop_invmap('Case_Folding');
     for my $i (0 .. @$invlist_ref - 1 - 1) {
